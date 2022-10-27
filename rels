@@ -1,0 +1,64 @@
+#!/usr/bin/python3
+# COMP3311 20T3 Ass3 ... print info about different releases for Movie
+
+import sys
+import psycopg2
+from helpers import aliasInfo, printMovieList
+
+# globals
+
+usage = "Usage: rels 'PartialMovieTitle'"
+
+searchRels = """select title, start_year, id
+from Movies
+where title ~* %s
+order by start_year, title;
+"""
+
+searchAlias = """select ordering, local_title, region, language, extra_info
+from Aliases
+where movie_id = %s
+order by ordering;
+"""
+
+db = None
+
+# process command-line args
+
+argc = len(sys.argv)
+if argc != 2:
+	print(usage)
+	exit(1)
+else:
+	partialName = sys.argv[1]
+
+# manipulate database
+
+try:
+	db = psycopg2.connect("dbname=imdb")
+	cur = db.cursor()
+	cur.execute(searchRels, [partialName])
+	movies = cur.fetchall()
+	if len(movies) == 0:
+		print(f"No movie matching '{partialName}'")
+	elif len(movies) > 1: 
+		#helper function that prints list of movie matches
+		printMovieList(partialName, movies, None)
+	else:
+		title, year, movie_id = movies[0]
+		cur.execute(searchAlias, [movie_id])
+		aliases = cur.fetchall()
+		if len(aliases) < 1:
+			print(f"{title} ({year}) has no other releases")
+		else:
+			print(f"{title} ({year}) was also released as")
+			for tup in aliases:
+				# helper function that processes and prints info
+				aliasInfo(tup)
+
+except psycopg2.Error as err:
+	print("DB error: ", err)
+finally:
+	if db:
+		db.close()
+

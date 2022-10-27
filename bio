@@ -1,0 +1,87 @@
+#!/usr/bin/python3
+# COMP3311 20T3 Ass3 ... get Name's biography/filmography
+
+import sys
+import psycopg2
+from helpers import printPeopleList, printBio, isInt
+
+# globals
+
+usage = "Usage: bio 'NamePattern' [Year]"
+
+peopleQ = """select name, birth_year, death_year
+from Names
+where name ~* %s {}
+order by name;
+"""
+
+bioQ = """
+select * from bio(%s);
+"""
+
+bioyearQ = """
+select * from bioyear(%s, {});
+"""
+
+db = None
+
+# process command-line args
+
+argc = len(sys.argv)
+if argc == 2:
+	partialName = sys.argv[1]
+	peopleQ = peopleQ.format("")
+elif argc == 3:
+	partialName = sys.argv[1]
+	if (isInt(sys.argv[2])):
+		peopleQ = peopleQ.format(f"and birth_year = {sys.argv[2]}")
+		bioyearQ = bioyearQ.format(f"{sys.argv[2]}")
+	else:
+		print(usage)
+		exit(1)
+else:
+	print(usage)
+	exit(1)
+	
+# manipulate database
+
+try:
+	db = psycopg2.connect("dbname=imdb")
+	cur = db.cursor()
+	cur.execute(peopleQ, [partialName])
+	people = cur.fetchall()
+	if len(people) == 0 and argc == 2:
+		print(f"No name matching '{partialName}'")
+	elif len(people) == 0 and argc == 3:
+		print(f"No name matching '{partialName}' {sys.argv[2]}")
+	elif len(people) > 1: 
+		print(f"Names matching '{partialName}'")
+		print("===============")
+		#helper function that prints list of people matches
+		printPeopleList(people)
+	else:
+		name, birth_year, death_year = people[0]
+		if birth_year == None:
+			nameString = f"{name} (???)"
+		elif birth_year != None and death_year == None:
+			nameString = f"{name} ({birth_year}-)"
+		else:
+			nameString = f"{name} ({birth_year}-{death_year})"
+		print(f"Filmography for {nameString}")
+		print("===============")
+		
+		if argc == 2:
+			cur.execute(bioQ, [partialName])
+		else: 
+			cur.execute(bioyearQ, [partialName])
+		bio = cur.fetchall()
+		#helper function that prints info
+		printBio(bio)
+				
+	
+except psycopg2.Error as err:
+	print("DB error: ", err)
+finally:
+	if db:
+		db.close()
+

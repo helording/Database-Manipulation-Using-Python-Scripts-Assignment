@@ -1,0 +1,94 @@
+#!/usr/bin/python3
+# COMP3311 20T3 Ass3 ... print info about cast and crew for Movie
+
+import sys
+import psycopg2
+from helpers import printMovieList, isInt
+
+# globals
+
+usage = "Usage: minfo 'MovieTitlePattern' [Year]"
+
+searchMovie = """select title, start_year, id
+from Movies
+where title ~* %s {}
+order by start_year, title;
+"""
+
+actorQ = """ select name, played
+from acting_roles ar
+join names n on (ar.name_id = n.id)
+natural join principals
+where movie_id = %s
+order by ordering, played;
+"""
+
+crewQ = """ select name, role
+from crew_roles cr
+join names n on (cr.name_id = n.id)
+natural join principals
+where movie_id = %s
+order by ordering, role;
+"""
+
+db = None
+
+# process command-line args 
+
+argc = len(sys.argv)
+if argc == 2:
+	partialName = sys.argv[1]
+	searchMovie = searchMovie.format("")
+elif argc == 3:
+	partialName = sys.argv[1]
+	if (isInt(sys.argv[2])):
+		searchMovie = searchMovie.format(f"and start_year = {sys.argv[2]}")
+	else:
+		print(usage)
+		exit(1)
+else:
+	print(usage)
+	exit(1)
+
+# manipulate database
+
+try:
+	db = psycopg2.connect("dbname=imdb")
+	cur = db.cursor()
+	cur.execute(searchMovie, [partialName])
+	movies = cur.fetchall()
+	if len(movies) == 0 and argc == 2:
+		print(f"No movie matching '{partialName}'")
+	elif len(movies) == 0 and argc == 3:
+		print(f"No movie matching '{partialName}' {sys.argv[2]}")
+	elif len(movies) > 1: 
+		if argc == 3:
+			#helper function that prints list of movie matches
+			printMovieList(partialName, movies, sys.argv[2])
+		else:
+			#helper function that prints list of movie matches
+			printMovieList(partialName, movies, None)
+	else:
+		title, year, movie_id = movies[0]
+		print(f"{title} ({year})")
+		print("===============")
+		print("Starring")
+		
+		cur.execute(actorQ, [movie_id])
+		actors = cur.fetchall()
+		for tup in actors:
+			print(f" {tup[0]} as {tup[1]}")
+	
+		print("and with")
+		
+		cur.execute(crewQ, [movie_id])
+		crew = cur.fetchall()
+		for tup in crew:
+			print(f" {tup[0]}: {tup[1].capitalize()}")
+				
+except psycopg2.Error as err:
+	print("DB error: ", err)
+finally:
+	if db:
+		db.close()
+
